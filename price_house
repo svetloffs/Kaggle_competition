@@ -1,0 +1,250 @@
+# !pip install python-language-server
+# !pip install tqdm
+# !pip install xgboost
+# !pip install lightgbm
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from graphviz import Source
+import xgboost as xgb
+import lightgbm as lgb
+
+from IPython.display import SVG
+from IPython.display import display
+from IPython.display import HTML
+
+%matplotlib inline
+
+from sklearn import tree
+from sklearn.model_selection import train_test_split # библиотека для обучения модели 
+from sklearn.model_selection import cross_val_score # библиотека разбиения данных сплиты тест и обучающие -
+from sklearn.model_selection import KFold, cross_val_score, train_test_split
+from sklearn.model_selection import GridSearchCV
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import metrics, svm
+
+from sklearn.linear_model import LinearRegression, LogisticRegression, ElasticNet, Lasso,  BayesianRidge, LassoLarsIC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.naive_bayes import GaussianNB
+from sklearn.svm import SVC
+
+from sklearn.ensemble import RandomForestRegressor,  GradientBoostingRegressor
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import RobustScaler
+from sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin, clone
+
+from sklearn.metrics import mean_squared_error
+from sklearn import preprocessing
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import GridSearchCV
+
+style = "<style>svg{width:50% !important; heigth:50% !important;}</style>"
+HTML(style)
+
+#load dataset's
+data_train = pd.read_csv(r'train.csv', header=0, index_col=0)
+y_train = data_train.SalePrice
+data_train = data_train.drop(['SalePrice'], axis=1)
+data_test = pd.read_csv(r'test.csv', header=0, index_col=0)
+data_train_full = pd.read_csv(r'train.csv', header=0, index_col=0)
+# data_train.shape, data_test.shape
+
+data_test.head()
+
+data_train.head()
+
+# #load dataset's
+# data_train = pd.read_csv(r'dataset/train.csv', header=0, index_col=0)
+# data_test = pd.read_csv(r'dataset/test.csv', header=0, index_col=0)
+# data_train_full = pd.read_csv(r'dataset/train.csv', header=0, index_col=0)
+# # data_train.shape, data_test.shape
+train_fea = list(data_train.columns)
+test_fea = list(data_test.columns)
+c = 0
+for item in train_fea:
+    if item in test_fea:
+        c += 1
+if c == len(train_fea):
+    print('Same!')
+else:
+    print('Features not same!')
+    
+cat_feature_lst =  data_train.dtypes[data_train.dtypes == 'object'].index
+num_feature_lst =  data_train.dtypes[data_train.dtypes != 'object'].index
+# cat_feature_lst.shape, num_feature_lst.shape
+
+data_train_cat = pd.get_dummies(data_train[cat_feature_lst])
+print(data_train_cat.shape, data_train_cat.columns)
+frames = [data_train_cat, data_train[num_feature_lst]]
+data_train = pd.concat(frames, axis=1)
+print(data_train.shape, data_train.columns)
+
+data_train = round(data_train / data_train.max(), 3)
+# data_train = data_train.dropna(axis=1)
+
+data_train = data_train.fillna(0.0001)
+data_train = data_train.replace(0, 0.0001)
+data_train.head()
+
+correlation_train = data_train_full.corr()
+correlation_train = correlation_train['SalePrice'].sort_values(ascending=False, inplace=False)
+a = correlation_train[correlation_train.values > 0.2]
+a = a.iloc[1:]
+a = list(a.index)
+len(a), a
+
+train_dataset = pd.DataFrame(data_train, columns = a)
+# train_dataset = train_dataset.dropna(axis = 1)
+train_dataset.head()
+
+corr_train = train_dataset.corr()
+sns.set(font_scale=2)
+plt.figure(figsize = (25,25))
+ax = sns.heatmap(corr_train, annot=True,annot_kws={"size": 25},fmt='.1f',cmap='PiYG', linewidths=.5)
+
+train_dataset.shape
+
+data_test['GarageArea']
+
+test_cat_feature_lst =  data_test.dtypes[data_test.dtypes == 'object'].index
+test_num_feature_lst =  data_test.dtypes[data_test.dtypes != 'object'].index
+
+data_test_cat = pd.get_dummies(data_test[test_cat_feature_lst])
+print(data_test_cat.shape, data_test_cat.columns)
+# print(data_test_cat['GarageArea'])
+frames_test = [data_test_cat, data_test[test_num_feature_lst]]
+data_test = pd.concat(frames_test, axis=1)
+print(data_test.shape, data_test.columns)
+
+data_test = round(data_test / data_test.max(), 3)
+# data_test = data_test.dropna(axis=1)
+
+data_test = data_test.fillna(0.0001)
+data_test = data_test.replace(0, 0.0001)
+# data_test['GarageArea']
+
+data_test['GarageArea']
+
+test_dataset = pd.DataFrame(data_test, columns=a)
+# test_dataset = test_dataset.dropna(axis=1)
+test_dataset.tail()
+
+test_dataset.shape
+
+corr_test = test_dataset.corr()
+sns.set(font_scale=2)
+plt.figure(figsize = (25,25))
+ax = sns.heatmap(corr_test, annot=True,annot_kws={"size": 25},fmt='.1f',cmap='PiYG', linewidths=.5)
+
+all_data_na = (train_dataset.isnull().sum() / len(train_dataset)) * 100
+all_data_na = all_data_na.drop(all_data_na[all_data_na == 0].index).sort_values(ascending=False)[:30]
+missing_data = pd.DataFrame({'Missing Ratio' :all_data_na})
+missing_data.head(20)
+
+all_data_na = (test_dataset.isnull().sum() / len(test_dataset)) * 100
+all_data_na = all_data_na.drop(all_data_na[all_data_na == 0].index).sort_values(ascending=False)[:30]
+missing_data = pd.DataFrame({'Missing Ratio' :all_data_na})
+missing_data.head(20)
+
+train_dataset.shape, test_dataset.shape
+
+all_data_na = (train_dataset.isna().sum() / len(train_dataset)) * 100
+all_data_na = all_data_na.drop(all_data_na[all_data_na != 'NaN'].index).sort_values(ascending=False)[:30]
+missing_data = pd.DataFrame({'Missing Ratio' :all_data_na})
+missing_data.head(20)
+
+all_data_na = (test_dataset.isna().sum() / len(test_dataset)) * 100
+all_data_na = all_data_na.drop(all_data_na[all_data_na != 'NaN'].index).sort_values(ascending=False)[:30]
+missing_data = pd.DataFrame({'Missing Ratio' :all_data_na})
+missing_data.head(20)
+
+test_dataset['SalePrice'] = 0
+
+X_train, X_test, y_train, y_test = train_test_split(train_dataset, y_train, test_size=0.33, random_state=42)
+
+# y_test = test_dataset.SalePrice
+# X_test = test_dataset.drop(['SalePrice'], axis=1)
+
+X_test.shape, y_test.shape
+
+# X_train = train_dataset
+
+X_train.shape, y_train.shape
+
+#skewness and kurtosis
+print("Skewness: %f" % y_train.skew())
+print("Kurtosis: %f" % y_train.kurt())
+
+#encoding label
+# lab_enc = preprocessing.LabelEncoder()
+# training_scores_encoded = lab_enc.fit_transform(y_train)
+
+
+clf = DecisionTreeClassifier()
+parametrs = {'criterion' : ['gini','entropy'], 'max_depth' : (1,10), 'min_samples_split' : range(2,10), 'min_samples_leaf' : range(1,10)}
+search = GridSearchCV(clf, parametrs, cv=5)
+search.fit(X_train, y_train)
+best_tree = search.best_estimator_
+best_tree.fit(X_train, y_train)
+y_pred_dtc = best_tree.predict(X_test)
+
+y_pred_dtc.shape
+
+best_tree.score(X_train, y_train)
+
+best_tree.score(X_test, y_pred_dtc)
+
+
+np.random.seed(0)
+clf = RandomForestClassifier(random_state=0)
+# создадим словарь параметров из clf (см. выше параметры, которые есть в clf) для поиска оптимального решения:
+parametrs = {'n_estimators' : range(10,50, 10), 
+             'criterion' : ['entropy'], 
+             'max_depth' : range(1, 14, 2), 
+             'min_samples_leaf' : range(1, 10), 
+             'min_samples_split' : range(2, 12, 2)}
+# n_estimators: от 10 до 50 с шагом 10
+# max_depth: от 1 до 12 с шагом 2
+# min_samples_leaf: от 1 до 7
+# min_samples_split: от 2 до 9 с шагом 2
+gscv_clf = GridSearchCV(clf, parametrs, n_jobs=-1, cv=3)
+gscv_clf.fit(X_train, y_train)
+
+best_clf = gscv_clf.best_estimator_
+best_clf
+
+best_clf.fit(X_train, y_train)
+
+y_pred_rf = best_clf.predict(X_test)
+y_pred_rf = pd.DataFrame(y_test, columns={'SalePrice':1})
+
+y_test_out = pd.DataFrame()
+y_test_out['SalePrice'] = 0
+X_test_out = test_dataset.drop(['SalePrice'], axis=1)
+
+y_pred_rf_out = best_clf.predict(X_test_out)
+
+y_pred_rf_out.shape
+
+test_ID = pd.read_csv('test.csv')
+sample_sub = pd.DataFrame(test_ID['Id'])
+sample_sub['SalePrice'] = y_pred_rf_out
+sample_sub.to_csv('Predict_HousePrice_rf.csv', index=False)
+
+sample_sub
+
+best_clf.fit(X_test_out, y_pred_rf_out)
+
+
+best_clf.score(X_test_out, y_pred_rf_out)
+
+
+cross_val_score(clf, X_train, y_train, cv=5).mean()
+
+cross_val_score(best_clf, X_test_out, y_pred_rf_out, cv=5).mean()
